@@ -1,0 +1,13 @@
+script: "/main/main.render_script"
+materials {
+  name: "blur"
+  material: "/materials/blur.material"
+}
+materials {
+  name: "normal"
+  material: "/materials/normal.material"
+}
+materials {
+  name: "depth"
+  material: "/materials/depth.material"
+}

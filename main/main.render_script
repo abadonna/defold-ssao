@@ -1,0 +1,215 @@
+--
+-- projection that centers content with maintained aspect ratio and optional zoom
+--
+local function fixed_projection(near, far, zoom)
+    local projected_width = render.get_window_width() / (zoom or 1)
+    local projected_height = render.get_window_height() / (zoom or 1)
+    local xoffset = -(projected_width - render.get_width()) / 2
+    local yoffset = -(projected_height - render.get_height()) / 2
+    return vmath.matrix4_orthographic(xoffset, xoffset + projected_width, yoffset, yoffset + projected_height, near, far)
+end
+--
+-- projection that centers and fits content with maintained aspect ratio
+--
+local function fixed_fit_projection(near, far)
+    local width = render.get_width()
+    local height = render.get_height()
+    local window_width = render.get_window_width()
+    local window_height = render.get_window_height()
+    local zoom = math.min(window_width / width, window_height / height)
+    return fixed_projection(near, far, zoom)
+end
+--
+-- projection that stretches content
+--
+local function stretch_projection(near, far)
+    return vmath.matrix4_orthographic(0, render.get_width(), 0, render.get_height(), near, far)
+end
+
+local function get_projection(self)
+    return self.projection_fn(self.near, self.far, self.zoom)
+end
+
+local function create_render_targets(self)
+    local data_params = 
+    { 
+        format = render.FORMAT_RGBA,
+        width = self.tex_width / 2,
+        height = self.tex_height / 2,
+        min_filter = render.FILTER_LINEAR,
+        mag_filter = render.FILTER_LINEAR,
+        u_wrap = render.WRAP_CLAMP_TO_EDGE,
+        v_wrap = render.WRAP_CLAMP_TO_EDGE 
+    }
+
+    local color_params = 
+    { 
+        format = render.FORMAT_RGBA,
+        width = self.tex_width,
+        height = self.tex_height,
+        min_filter = render.FILTER_LINEAR,
+        mag_filter = render.FILTER_LINEAR,
+        u_wrap = render.WRAP_CLAMP_TO_EDGE,
+        v_wrap = render.WRAP_CLAMP_TO_EDGE 
+    }
+
+    local depth_params = { 
+        format = render.FORMAT_DEPTH,
+        width =  self.tex_width,
+        height =  self.tex_width,
+        u_wrap = render.WRAP_CLAMP_TO_EDGE,
+        v_wrap = render.WRAP_CLAMP_TO_EDGE 
+    }
+
+    local data_depth_params = { 
+        format = render.FORMAT_DEPTH,
+        width =  self.tex_width/2,
+        height =  self.tex_width/2,
+        u_wrap = render.WRAP_CLAMP_TO_EDGE,
+        v_wrap = render.WRAP_CLAMP_TO_EDGE 
+    }
+  
+   self.normal_target = render.render_target("data", {[render.BUFFER_COLOR_BIT] = data_params,  [render.BUFFER_DEPTH_BIT] = data_depth_params}) 
+   self.depth_target = render.render_target("pos", {[render.BUFFER_COLOR_BIT] = data_params,  [render.BUFFER_DEPTH_BIT] = data_depth_params}) 
+   self.ssao_target = render.render_target("blur", {[render.BUFFER_COLOR_BIT] = data_params}) 
+   self.color_target = render.render_target("color", {[render.BUFFER_COLOR_BIT] = color_params, [render.BUFFER_DEPTH_BIT] = depth_params}) 
+
+end
+
+function init(self)
+    self.tile_pred = render.predicate({"tile"})
+    self.gui_pred = render.predicate({"gui"})
+    self.text_pred = render.predicate({"text"})
+    self.particle_pred = render.predicate({"particle"})
+    self.model_pred = render.predicate({"model"})
+    self.quad_pred = render.predicate({"quad"})
+    
+    self.clear_color = vmath.vector4(0, 0, 0, 0)
+    self.clear_color.x = sys.get_config("render.clear_color_red", 0)
+    self.clear_color.y = sys.get_config("render.clear_color_green", 0)
+    self.clear_color.z = sys.get_config("render.clear_color_blue", 0)
+    self.clear_color.w = sys.get_config("render.clear_color_alpha", 0)
+
+    self.view = vmath.matrix4()
+
+    -- default is stretch projection. copy from builtins and change for different projection
+    -- or send a message to the render script to change projection:
+    -- msg.post("@render:", "use_stretch_projection", { near = -1, far = 1 })
+    -- msg.post("@render:", "use_fixed_projection", { near = -1, far = 1, zoom = 2 })
+    -- msg.post("@render:", "use_fixed_fit_projection", { near = -1, far = 1 })
+    self.near = -1
+    self.far = 1
+    self.projection_fn = stretch_projection
+
+    self.tex_width = render.get_window_width()
+    self.tex_height = render.get_window_height()
+    create_render_targets(self)
+end
+
+function update(self)
+   
+    render.set_depth_mask(true)
+    render.set_stencil_mask(0xff)
+    render.clear({[render.BUFFER_COLOR_BIT] = self.clear_color, [render.BUFFER_DEPTH_BIT] = 1, [render.BUFFER_STENCIL_BIT] = 0})
+
+    render.set_viewport(0, 0, self.tex_width , self.tex_height)
+    render.set_view(self.view)
+
+    render.set_depth_mask(false)
+    render.disable_state(render.STATE_DEPTH_TEST)
+    render.disable_state(render.STATE_STENCIL_TEST)
+    render.enable_state(render.STATE_BLEND)
+    render.set_blend_func(render.BLEND_SRC_ALPHA, render.BLEND_ONE_MINUS_SRC_ALPHA)
+    render.disable_state(render.STATE_CULL_FACE)
+
+    render.set_projection(get_projection(self))
+
+    render.draw(self.tile_pred)
+    render.draw(self.particle_pred)
+    render.draw_debug3d()
+
+
+    render.enable_state(render.STATE_CULL_FACE)
+    render.enable_state(render.STATE_DEPTH_TEST)
+    render.set_depth_mask(true)
+
+    render.set_render_target(self.color_target)
+    render.clear({[render.BUFFER_COLOR_BIT] = self.clear_color, [render.BUFFER_DEPTH_BIT] = 1})
+    render.draw(self.model_pred)
+    
+    render.disable_state(render.STATE_BLEND)
+
+    render.set_viewport(0, 0, self.tex_width/2 , self.tex_height/2 )
+
+    render.set_render_target(self.normal_target)
+    render.clear({[render.BUFFER_COLOR_BIT] = vmath.vector4(0), [render.BUFFER_DEPTH_BIT] = 1})
+    render.enable_material("normal")
+    render.draw(self.model_pred)
+    render.disable_material()
+
+    render.set_render_target(self.depth_target)
+    render.clear({[render.BUFFER_COLOR_BIT] = vmath.vector4(0), [render.BUFFER_DEPTH_BIT] = 1})
+    render.enable_material("depth")
+    render.draw(self.model_pred)
+    render.disable_material()
+
+    render.set_depth_mask(false)
+    render.disable_state(render.STATE_DEPTH_TEST)
+        
+    render.set_render_target(self.ssao_target)
+    render.clear({[render.BUFFER_COLOR_BIT] = self.clear_color})
+    render.enable_texture(0, self.normal_target, render.BUFFER_COLOR_BIT)
+    render.enable_texture(1, self.depth_target, render.BUFFER_COLOR_BIT)
+    render.draw(self.quad_pred)
+    render.disable_texture(0)
+    render.disable_texture(1)
+
+    render.set_viewport(0, 0, self.tex_width, self.tex_height)
+
+    render.enable_state(render.STATE_BLEND)
+    render.set_render_target(render.RENDER_TARGET_DEFAULT)
+    render.enable_texture(0, self.ssao_target, render.BUFFER_COLOR_BIT)
+    render.enable_texture(1, self.color_target, render.BUFFER_COLOR_BIT)
+    render.enable_material("blur")
+    render.draw(self.quad_pred)
+    render.disable_material()
+    render.disable_texture(0)
+    render.disable_texture(1)
+
+     
+    -- render GUI
+    --
+    render.set_view(vmath.matrix4())
+    render.set_projection(vmath.matrix4_orthographic(0, render.get_window_width(), 0, render.get_window_height(), -1, 1))
+
+    render.enable_state(render.STATE_STENCIL_TEST)
+    render.draw(self.gui_pred)
+    render.draw(self.text_pred)
+    render.disable_state(render.STATE_STENCIL_TEST)
+end
+
+function on_message(self, message_id, message)
+    if message_id == hash("clear_color") then
+        self.clear_color = message.color
+    elseif message_id == hash("window_resized") then
+        self.need_update = true
+    elseif message_id == hash("set_view_projection") then
+        self.view = message.view
+        self.projection = message.projection
+    elseif message_id == hash("use_camera_projection") then
+        self.projection_fn = function() return self.projection or vmath.matrix4() end
+    elseif message_id == hash("use_stretch_projection") then
+        self.near = message.near or -1
+        self.far = message.far or 1
+        self.projection_fn = stretch_projection
+    elseif message_id == hash("use_fixed_projection") then
+        self.near = message.near or -1
+        self.far = message.far or 1
+        self.zoom = message.zoom or 1
+        self.projection_fn = fixed_projection
+    elseif message_id == hash("use_fixed_fit_projection") then
+        self.near = message.near or -1
+        self.far = message.far or 1
+        self.projection_fn = fixed_fit_projection
+    end
+end
