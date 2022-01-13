@@ -1,5 +1,4 @@
 varying mediump vec2 var_texcoord0;
-varying mediump vec4 var_position;
 uniform sampler2D tex0;
 uniform sampler2D tex1;
 
@@ -21,6 +20,6 @@ void main()
 	
 	//gl_FragColor = vec4(occlusion,occlusion,occlusion, 1.);
 	gl_FragColor = vec4(color.xyz * occlusion, color.w);
-	//gl_FragColor = texture2D(tex1, var_texcoord0);
+	//gl_FragColor = texture2D(tex0, var_texcoord0);
 
 }

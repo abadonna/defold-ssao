@@ -5,7 +5,7 @@ varying mediump vec2 var_texcoord0;
 uniform mediump mat4 mtx_proj;
 varying mediump mat4 var_mtx;
 
-varying highp vec4 var_position;
+varying mediump vec3 var_view_ray;
 
 mat4 inverse(mat4 m) {
     float
@@ -48,12 +48,14 @@ mat4 inverse(mat4 m) {
         a20 * b03 - a21 * b01 + a22 * b00) / det;
     }
 
+float far = 20.;
+
 void main()
 {
-    var_texcoord0 = vec2((position.x + 1.)/2., (position.y + 1.)/2.);
+    var_texcoord0 = texcoord0;
     var_mtx = inverse(mtx_proj);
-    var_position = var_mtx * position;
-    
+    vec3 p = (var_mtx * position).xyz;
+    var_view_ray =  p * (far / -p.z);
     gl_Position = position;
     
 }
