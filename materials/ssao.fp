@@ -9,6 +9,7 @@ uniform highp sampler2D tex2;
 uniform highp vec4 kernel[64];
 uniform highp vec4 noise[16];
 uniform mediump mat4 mtx_proj;
+uniform mediump vec4 options;
 
 float rgba_to_float(vec4 rgba)
 {
@@ -56,9 +57,9 @@ void main()
 	vec3 normal = data.xyz * 2.0 - 1.0;
 	normal = normalize(normal);
 
-	//vec3 origin = unproject1(var_texcoord0);
+	vec3 origin = unproject1(var_texcoord0);
 	//vec3 origin = unproject2(var_texcoord0);
-	vec3 origin = unproject3(var_texcoord0);
+	//vec3 origin = unproject3(var_texcoord0);
 
 	ivec2 ts = textureSize(tex0, 0);
 	int u = int(mod(var_texcoord0.x  * ts.x,  4));
@@ -70,12 +71,13 @@ void main()
 	mat3 tbn = mat3(tangent, bitangent, normal);
 
 	float bias = 0.;
-	float radius = .8;
+	float radius = .5;
 	float occlusion = 0.0;
+	int start = int(options.x);
 	
-	for (int i = 0; i < 64; ++i) {
+	for (int i = 0; i < 32; ++i) {
 		// get sample position:
-		vec3 sample = tbn * kernel[i].xyz;
+		vec3 sample = tbn * kernel[i + start].xyz;
 		sample = sample * radius + origin;
 
 		// project sample position:
@@ -92,7 +94,7 @@ void main()
 		occlusion += (depth >= sample.z + bias ? 1.0 : 0.0) * check;
 	}
 
-	occlusion = 1.- (occlusion / 64.);
+	occlusion = 1.- (occlusion / 32.);
 	
 	gl_FragColor = vec4(occlusion,occlusion,occlusion, 1); 
 

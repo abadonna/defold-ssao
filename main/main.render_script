@@ -69,11 +69,13 @@ local function create_render_targets(self)
         v_wrap = render.WRAP_CLAMP_TO_EDGE 
     }
   
-   self.normal_target = render.render_target("data", {[render.BUFFER_COLOR_BIT] = data_params,  [render.BUFFER_DEPTH_BIT] = data_depth_params}) 
-   self.depth_target = render.render_target("pos", {[render.BUFFER_COLOR_BIT] = data_params,  [render.BUFFER_DEPTH_BIT] = data_depth_params}) 
-   self.ssao_target = render.render_target("blur", {[render.BUFFER_COLOR_BIT] = data_params}) 
-   self.color_target = render.render_target("color", {[render.BUFFER_COLOR_BIT] = color_params, [render.BUFFER_DEPTH_BIT] = depth_params}) 
-
+    self.normal_target = render.render_target("data", {[render.BUFFER_COLOR_BIT] = data_params,  [render.BUFFER_DEPTH_BIT] = data_depth_params}) 
+    self.depth_target = render.render_target("pos", {[render.BUFFER_COLOR_BIT] = data_params,  [render.BUFFER_DEPTH_BIT] = data_depth_params}) 
+    self.ssao_target1 = render.render_target("blur", {[render.BUFFER_COLOR_BIT] = data_params}) 
+    self.ssao_target2 = render.render_target("blur", {[render.BUFFER_COLOR_BIT] = data_params}) 
+    self.ssao_target = render.render_target("blur", {[render.BUFFER_COLOR_BIT] = data_params}) 
+    self.color_target = render.render_target("color", {[render.BUFFER_COLOR_BIT] = color_params, [render.BUFFER_DEPTH_BIT] = depth_params}) 
+    self.ssao = self.ssao_target1
 end
 
 function init(self)
@@ -155,12 +157,31 @@ function update(self)
 
     render.set_depth_mask(false)
     render.disable_state(render.STATE_DEPTH_TEST)
-        
-    render.set_render_target(self.ssao_target)
+
+    local cb  = render.constant_buffer()
+    if self.ssao == self.ssao_target1 then
+        self.ssao = self.ssao_target2
+        cb.options = vmath.vector4(32, 0, 0, 0)
+    else
+        self.ssao = self.ssao_target1
+        cb.options = vmath.vector4(0, 0, 0, 0)
+    end
+    
+    render.set_render_target(self.ssao)
     render.clear({[render.BUFFER_COLOR_BIT] = self.clear_color})
     render.enable_texture(0, self.normal_target, render.BUFFER_COLOR_BIT)
     render.enable_texture(1, self.depth_target, render.BUFFER_COLOR_BIT)
     render.draw(self.quad_pred)
+    render.disable_texture(0)
+    render.disable_texture(1)
+
+   
+    render.set_render_target(self.ssao_target)
+    render.enable_texture(0, self.ssao_target1, render.BUFFER_COLOR_BIT)
+    render.enable_texture(1, self.ssao_target2, render.BUFFER_COLOR_BIT)
+    render.enable_material("combine")
+    render.draw(self.quad_pred)
+    render.disable_material()
     render.disable_texture(0)
     render.disable_texture(1)
 
@@ -175,6 +196,7 @@ function update(self)
     render.disable_material()
     render.disable_texture(0)
     render.disable_texture(1)
+ 
 
      
     -- render GUI

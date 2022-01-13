@@ -11,3 +11,7 @@ materials {
   name: "depth"
   material: "/materials/depth.material"
 }
+materials {
+  name: "combine"
+  material: "/materials/combine.material"
+}
